@@ -6,7 +6,6 @@
 #
 #   1. Variables starting with 'graph_$name' ...
 #   2. Variables starting with 'stacked_graph_$name'
-#   3.
 #
 
 graph_apache_bytes = r'''

@@ -7,6 +7,7 @@ from __future__ import absolute_import
 import os, sys
 import optparse
 import textwrap
+import tempfile
 import subprocess
 
 from collections import ChainMap
@@ -56,8 +57,11 @@ def parseopt(argv=None):
         Enumerate all plugins in -d/--datadir that this tool
         knows how to graph.
 
+      show <name>
+        Create and show graph using xdg-open.
+
       graph <name> <output> [<name> <output> ...]
-        Create graphs for the specified plugins.
+        Create and save graphs for the specified plugins.
 
     Environment variables:
       COLLECTD_GRAPH_DATADIR  path to collectd rrd datadir
@@ -175,7 +179,8 @@ def cmd_graph(opts, names, args):
 
         type, defn, stat = names[plugin]
         defn = defn.format(file=stat.path, colors=collectd.default_colors)
-        cmd = collectd.rrdgraph_cmd(output, opts.imgformat, defn.splitlines())
+        defn = [i for i in defn.splitlines() if not i.startswith('#')]
+        cmd = collectd.rrdgraph_cmd(output, opts.imgformat, defn)
         commands.append(cmd)
 
     if opts.dryrun and opts.dryrun == 'json':
@@ -212,6 +217,31 @@ def cmd_list(opts, names):
             print(name, '(stacked)')
 
 
+def cmd_show(opts, names, args):
+    '''
+    '''
+
+    if not args:
+        msg = 'error: no plugins specified (hint: see output of "list" command)'
+        raise SystemExit(msg, 2)
+
+    plugin = args[0]
+    if plugin not in names:
+        raise SystemExit('error: "%s" is not a known plugin type' % plugin, 1)
+
+    type, defn, stat = names[plugin]
+    defn = defn.format(file=stat.path, colors=collectd.default_colors)
+    defn = [i for i in defn.splitlines() if not i.startswith('#')]
+
+    try:
+        path = tempfile.NamedTemporaryFile(suffix='.png')
+        cmd = collectd.rrdgraph_cmd(path.name, 'PNG', defn)
+        subprocess.check_call(cmd)
+        utils.openfile(path.name)
+    finally:
+        path.close()
+
+
 def main(argv=sys.argv):
     parser, opts, args = parseopt(argv)
     args = args[1:]
@@ -227,7 +257,7 @@ def main(argv=sys.argv):
     if not args:
         raise SystemExit('error: no command specified', 1)
 
-    if args[0] not in {'list', 'graph'}:
+    if args[0] not in {'list', 'graph', 'show'}:
         msg = 'error: "%s" is not a valid collectd-graph command' % args[0]
         raise SystemExit(msg, 1)
 
@@ -271,6 +301,9 @@ def main(argv=sys.argv):
 
     if 'graph' in args:
         return cmd_graph(opts, names, args[1:])
+
+    if 'show' in args:
+        return cmd_show(opts, names, args[1:])
 
     if 'list' in args:
         return cmd_list(opts, names)
